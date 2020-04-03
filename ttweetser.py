@@ -8,28 +8,32 @@ import argparse
 
 numberOfClients = 0
 currentUsers = []
-sockets = []
-threads = []
+clientInformation = dict()
 startServer = True
 
 
+"""Contains information about client including hashtags, username, thread state, etc"""
+class Client:
+    def __init__(self, username, socket, thread):
+        self.username = username
+        self.socket = socket
+        self.thread = thread
+
+
 def addClientStates(username, connectionSocket):
-    t = threading.Thread(target=newClient, args=(connectionSocket, address)).start()
+    t = threading.Thread(target=newClient, args=(connectionSocket, address, username)).start()
     connectionSocket.send("username legal, connection established.".encode())
     currentUsers.append(username)
-    sockets.append(connectionSocket)
-    threads.append(t)
+    clientInformation[username] = Client(username, connectionSocket, t)
 
 
 def removeClientStates(username):
-    print("Client " + username + " exited")
     global numberOfClients
     numberOfClients -= 1
 
-    index = currentUsers.index(username)
-    currentUsers.pop(index)
-    sockets.pop(index)
-    threads.pop(index)
+    currentUsers.remove(username)
+    del clientInformation[username]
+    print("Client " + username + " exited")
 
 
 def isvalidPort(port):
@@ -38,28 +42,32 @@ def isvalidPort(port):
     return False
 
 
-def newClient(clisocket, address):
-    while True:
-        message = clisocket.recv(1024)
+def newClient(clisocket, address, username):
+    running = True
+    while running:
+        try:
+            message = clisocket.recv(1024)
 
-        #TODO -- verify message is correct
-        #TODO -- parse messages for commands
+            #TODO -- verify message is correct
+            #TODO -- parse messages for commands
 
-        msg = message.decode()
-        print(msg)
-        response = "Received."
+            msg = message.decode()
+            print(msg)
+            response = "Received."
 
-        if msg == "exit":
-            response = "exit"
-            clisocket.send(response.encode())
-
-            usernameExit = clisocket.recv(1024).decode()
-
-            removeClientStates(usernameExit)
-
+            if msg == "exit":
+                response = "exit"
+                clisocket.send(response.encode())
+                removeClientStates(username)
+                running = False
+                break
+            else:
+                clisocket.send(response.encode())
+        except Exception as exc:
+            print("error: exchanging messages with client due to: " + str(exc))
+            removeClientStates(username)
+            running = False
             break
-        else:
-            clisocket.send(response.encode())
 
     clisocket.close()
 
@@ -108,7 +116,7 @@ if startServer:
                     connectionSocket.close()
             else:
                 print("Extra client")
-                connectionSocket.send("exit".encode())
+                connectionSocket.send("error: too many clients".encode())
                 connectionSocket.close()
         except Exception as err:
             print("error: something went wrong exchanging messages with client, likely due to client disconnecting" +

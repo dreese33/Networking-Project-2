@@ -34,12 +34,6 @@ def isvalidPort(port):
     return False
 
 
-def userLoggedIn(username):
-    # TODO -- Check if username is already in use by server
-
-    return False
-
-
 attemptToConnect = True
 if not checkNumArgs():
     attemptToConnect = False
@@ -69,9 +63,6 @@ if not username.isalnum() and attemptToConnect:
     attemptToConnect = False
     print("error: username has wrong format, connection refused.")
 
-if userLoggedIn(username) and attemptToConnect:
-    attemptToConnect = False
-    print("username illegal, connection refused.")
 
 # Define socket
 if attemptToConnect:
@@ -111,12 +102,13 @@ if sendMessage:
             response = clientSocket.recv(1024).decode()
             if response == "exit":
                 running = False
-
-                clientSocket.send(username.encode())
-
                 print("bye bye")
                 break
             elif "illegal" in response:
+                running = False
+                print(response)
+                break
+            elif "too many clients" in response:
                 running = False
                 print(response)
                 break
@@ -129,7 +121,11 @@ if sendMessage:
                 running = False
                 print("bye bye")
                 break
-
+        except KeyboardInterrupt:
+            running = False
+            clientSocket.send(username.encode())
+            print("bye bye")
+            break
         except Exception as err:
             print("Exception occurred exchanging messages with server: " + str(err))
     clientSocket.close()
