@@ -73,11 +73,12 @@ if userLoggedIn(username) and attemptToConnect:
     attemptToConnect = False
     print("username illegal, connection refused.")
 
-#Define socket
+# Define socket
 if attemptToConnect:
     try:
         serverPort = args.serverPort
         serverName = args.serverIP
+        username = args.username
         clientSocket = socket(AF_INET, SOCK_STREAM)
         clientSocket.settimeout(3)
     except Exception as err:
@@ -90,13 +91,12 @@ sendMessage = True
 if attemptToConnect:
     try:
         clientSocket.connect((serverName, serverPort))
-
+        clientSocket.send(username.encode())
     except ConnectionRefusedError:
         print("Connection refused on host " + str(serverName) + ":" + str(serverPort))
         sendMessage = False
     except timeout:
-        print("Connection failed due to exceeding the 3 second timeout. "
-              "This is most likely due to an incorrect IP address entered. " "Client Exiting...")
+        print("Connection failed due to exceeding the 3 second timeout. " "Client Exiting...")
         sendMessage = False
 
     except Exception as exc:
@@ -108,13 +108,20 @@ running = True
 if sendMessage:
     while running:
         try:
-            response = clientSocket.recv(1024)
-            if response.decode() == "exit":
+            response = clientSocket.recv(1024).decode()
+            if response == "exit":
                 running = False
+
+                clientSocket.send(username.encode())
+
                 print("bye bye")
                 break
+            elif "illegal" in response:
+                running = False
+                print(response)
+                break
             else:
-                print(response.decode())
+                print(response)
 
             val = input()
             clientSocket.send(val.encode())

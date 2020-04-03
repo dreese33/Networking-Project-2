@@ -7,8 +7,29 @@ import argparse
 
 
 numberOfClients = 0
-clients = []
+currentUsers = []
+sockets = []
+threads = []
 startServer = True
+
+
+def addClientStates(username, connectionSocket):
+    t = threading.Thread(target=newClient, args=(connectionSocket, address)).start()
+    connectionSocket.send("username legal, connection established.".encode())
+    currentUsers.append(username)
+    sockets.append(connectionSocket)
+    threads.append(t)
+
+
+def removeClientStates(username):
+    print("Client " + username + " exited")
+    global numberOfClients
+    numberOfClients -= 1
+
+    index = currentUsers.index(username)
+    currentUsers.pop(index)
+    sockets.pop(index)
+    threads.pop(index)
 
 
 def isvalidPort(port):
@@ -22,18 +43,20 @@ def newClient(clisocket, address):
         message = clisocket.recv(1024)
 
         #TODO -- verify message is correct
-        #TODO -- parse messages and send appropriate responses
+        #TODO -- parse messages for commands
 
         msg = message.decode()
         print(msg)
         response = "Received."
 
         if msg == "exit":
-            print("Client exited")
-            global numberOfClients
-            numberOfClients -= 1
             response = "exit"
             clisocket.send(response.encode())
+
+            usernameExit = clisocket.recv(1024).decode()
+
+            removeClientStates(usernameExit)
+
             break
         else:
             clisocket.send(response.encode())
@@ -47,7 +70,7 @@ try:
     options = parser.parse_args()
 
     serverMessage = ""
-    serverPort = options.serverPort      # 13402
+    serverPort = options.serverPort
     serverSocket = socket(AF_INET, SOCK_STREAM)
 except Exception as err:
     startServer = False
@@ -71,16 +94,25 @@ if startServer:
     serverSocket.listen(1)
     print("Server on.")
     while True:
-        connectionSocket, address = serverSocket.accept()
-        if numberOfClients < 5:
-            numberOfClients += 1
-            connectionSocket.send("username legal, connection established.".encode())
-            print(numberOfClients)
-            t = threading.Thread(target=newClient, args=(connectionSocket, address)).start()
-            clients.append(1)
-        else:
-            print("Extra client")
-            connectionSocket.send("exit".encode())
-            connectionSocket.close()
+        try:
+            connectionSocket, address = serverSocket.accept()
+            print("A")
+            if numberOfClients < 5:
+                username = connectionSocket.recv(1024).decode()
+                if username not in currentUsers:
+                    numberOfClients += 1
+                    print(numberOfClients)
+                    addClientStates(username, connectionSocket)
+                else:
+                    connectionSocket.send("username illegal, connection refused.".encode())
+                    connectionSocket.close()
+            else:
+                print("Extra client")
+                connectionSocket.send("exit".encode())
+                connectionSocket.close()
+        except Exception as err:
+            print("error: something went wrong exchanging messages with client, likely due to client disconnecting" +
+                  str(err))
+
     serverSocket.close()
 
