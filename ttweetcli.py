@@ -2,14 +2,11 @@ from socket import *
 import argparse
 import ipaddress
 import sys
+import threading
 
 
 def checkNumArgs():
-    args = len(sys.argv)
-    print(args)
-    if args != 4:
-        return False
-    return True
+    return len(sys.argv) == 4
 
 
 def initialConnectionParse():
@@ -29,106 +26,94 @@ def isvalidIP(address):
 
 
 def isvalidPort(port):
-    if port < 65536 and port > 0:
+    if port < 65536 and port >= 1024:
         return True
     return False
 
 
-attemptToConnect = True
-if not checkNumArgs():
-    attemptToConnect = False
-    print("error: args should contain <ServerIP> <ServerPort> <Username>")
+# Loop to recieve and print messages
+def listen(clientSocket):
+    while True:
+        response = clientSocket.recv(1024).decode()
+        if response[1:]:
+            # If prefix is + then there's more to this response
+            if response[0] == '+':
+                print(response[1:], end='')
+            # If prefix is space then this is the end of this response.
+            elif response[0] == ' ':
+                print(response[1:])
+        if response[1:] == 'bye bye':
+            sys.exit()
 
+def main():
+    if not checkNumArgs():
+        print("error: args should contain <ServerIP>   <ServerPort>   <Username>")
+        return
 
-if attemptToConnect:
     try:
         args = initialConnectionParse()
     except Exception as err:
-        attemptToConnect = False
-        print("Argument error - arguments required are ServerIP, Port, Username respectively")
+        print("error: args should contain <ServerIP>   <ServerPort>   <Username>")
+        return
 
+    if not isvalidIP(args.serverIP):
+        print("error: server ip invalid, connection refused.")
+        return
 
-if not isvalidIP(args.serverIP):
-    attemptToConnect = False
-    print("error: server ip invalid, connection refused.")
+    if not isvalidPort(args.serverPort):
+        print("error: server port invalid, connection refused.")
+        return
 
+    username = args.username
+    if not username.isalnum():
+        print("error: username has wrong format, connection refused.")
+        return
 
-if not isvalidPort(args.serverPort) and attemptToConnect:
-    attemptToConnect = False
-    print("error: server port invalid, connection refused.")
-
-
-username = args.username
-if not username.isalnum() and attemptToConnect:
-    attemptToConnect = False
-    print("error: username has wrong format, connection refused.")
-
-
-# Define socket
-if attemptToConnect:
+    # Define socket
     try:
         serverPort = args.serverPort
         serverName = args.serverIP
         username = args.username
         clientSocket = socket(AF_INET, SOCK_STREAM)
-        clientSocket.settimeout(3)
     except Exception as err:
-        print("Exception occurred: " + str(err))
-        attemptToConnect = False
+        print("Exception occurred defining socket: " + str(err))
+        return
 
-
-# Attempt connection to server
-sendMessage = True
-if attemptToConnect:
+    # Attempt connection to server
+    sendMessage = True
     try:
         clientSocket.connect((serverName, serverPort))
-        clientSocket.send(username.encode())
+        clientSocket.send((' '+username).encode())
+        # See whay server said about our attempt to connect
+        response = clientSocket.recv(1024).decode()[1:]
+        if "illegal" in response:
+            print(response)
+            return
+        elif "too many clients" in response:
+            print(response)
+            return
+        else:
+            print(response)
     except ConnectionRefusedError:
-        print("Connection refused on host " + str(serverName) + ":" + str(serverPort))
-        sendMessage = False
+        print("connection error, please check your server: Connection refused")
+        return
     except timeout:
-        print("Connection failed due to exceeding the 3 second timeout. " "Client Exiting...")
-        sendMessage = False
-
+        print("Connection failed due to exceeding the 3 second timeout. ", "Client Exiting...")
+        return
     except Exception as exc:
         print("Exception occurred connecting to server: " + str(exc))
-        sendMessage = False
+        return
+
+    # Start message recieving in separate thread
+    t = threading.Thread(target=listen, args=(clientSocket,)).start()
+
+    # Main loop
+    while True:
+        message =  input()
+        clientSocket.send((' '+message).encode())
+    sys.exit()
 
 
-running = True
-if sendMessage:
-    while running:
-        try:
-            response = clientSocket.recv(1024).decode()
-            if response == "exit":
-                running = False
-                print("bye bye")
-                break
-            elif "illegal" in response:
-                running = False
-                print(response)
-                break
-            elif "too many clients" in response:
-                running = False
-                print(response)
-                break
-            else:
-                print(response)
-
-            val = input()
-            clientSocket.send(val.encode())
-            if input == "exit":
-                running = False
-                print("bye bye")
-                break
-        except KeyboardInterrupt:
-            running = False
-            clientSocket.send(username.encode())
-            print("bye bye")
-            break
-        except Exception as err:
-            print("Exception occurred exchanging messages with server: " + str(err))
-    clientSocket.close()
-
-sys.exit()
+if __name__ == '__main__':
+    main()
 
